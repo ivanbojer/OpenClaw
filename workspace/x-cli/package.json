@@ -1,0 +1,18 @@
+{
+  "name": "x-cli",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "twitter-api-v2": "^1.29.0",
+    "yargs": "^18.0.0"
+  }
+}
