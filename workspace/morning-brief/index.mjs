@@ -1,17 +1,20 @@
 #!/usr/bin/env node
 
 import { execSync } from "node:child_process";
+import { promises as fs } from "node:fs";
 
-const BRAVE_API_KEY = process.env.OPENCLAW_BRAVE_API_KEY;
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const BRAVE_API_KEY = [REDACTED]
+const TELEGRAM_BOT_TOKEN = [REDACTED]
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "@MyNewsChannelWithGru";
-const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const DISCORD_BOT_TOKEN = [REDACTED]
 const DISCORD_NEWS_CHANNEL_ID = process.env.DISCORD_NEWS_CHANNEL_ID || "1474262106386731144";
 const DISCORD_GUILD_ID = process.env.DISCORD_GUILD_ID;
 const DISCORD_MONITORING_CHANNEL_ID = process.env.DISCORD_MONITORING_CHANNEL_ID || "1474872383579099257";
 const TIMEZONE = "America/Los_Angeles";
 const TELEGRAM_CHUNK_LIMIT = 3500; // keep margin under Telegram's 4096 limit
 const DISCORD_CHUNK_LIMIT = 1800;
+const HISTORY_FILE = new URL("./news-history.json", import.meta.url);
+const HISTORY_MAX_PER_TOPIC = 200;
 
 if (!BRAVE_API_KEY) {
   console.error("Missing OPENCLAW_BRAVE_API_KEY in environment.");
@@ -38,6 +41,79 @@ const specialChannels = {
 };
 
 const MORNING_NEWS_CHANNEL_NAME = "morning-news";
+
+const ensureHistoryFile = async () => {
+  try {
+    await fs.access(HISTORY_FILE);
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      await fs.writeFile(HISTORY_FILE, "{}\n", "utf8");
+      console.warn("Initialized missing news history file.");
+    } else {
+      throw error;
+    }
+  }
+};
+
+const loadHistory = async () => {
+  try {
+    await ensureHistoryFile();
+    const raw = await fs.readFile(HISTORY_FILE, "utf8");
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed;
+    }
+    console.warn("News history file was not an object. Starting with empty history.");
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      console.warn("News history file was corrupt. Resetting history.");
+    } else if (error.code !== "ENOENT") {
+      console.warn("Failed to load news history. Resetting history:", error.message);
+    }
+  }
+  await fs.writeFile(HISTORY_FILE, "{}\n", "utf8");
+  return {};
+};
+
+const saveHistory = async (history) => {
+  const json = JSON.stringify(history, null, 2);
+  await fs.writeFile(HISTORY_FILE, `${json}\n`, "utf8");
+};
+
+const getArticleIdentifier = (article) => article?.url?.trim() || article?.title?.trim() || null;
+
+const updateHistory = async (history, newsByTopic) => {
+  let dirty = false;
+  for (const topic of newsByTopic) {
+    const reportedIds = topic.reportedIds || [];
+    if (!reportedIds.length) {
+      continue;
+    }
+    const existing = Array.isArray(history[topic.key]) ? [...history[topic.key]] : [];
+    let changed = false;
+    for (const id of reportedIds) {
+      if (!id || existing.includes(id)) {
+        continue;
+      }
+      existing.push(id);
+      changed = true;
+    }
+    if (changed) {
+      if (existing.length > HISTORY_MAX_PER_TOPIC) {
+        const excess = existing.length - HISTORY_MAX_PER_TOPIC;
+        existing.splice(0, excess);
+      }
+      history[topic.key] = existing;
+      dirty = true;
+    }
+  }
+  if (dirty) {
+    await saveHistory(history);
+    console.log("Updated news history file.");
+  } else {
+    console.log("No news history updates needed today.");
+  }
+};
 
 const fetchNews = async (query, limit = 3) => {
   try {
@@ -74,10 +150,15 @@ const fetchNews = async (query, limit = 3) => {
 
 const formatNewsSections = (newsByTopic) => {
   const lines = ["🗞️ News Radar"];
-  for (const { label, articles } of newsByTopic) {
+  for (const topic of newsByTopic) {
+    const { label, articles, duplicatesExhausted } = topic;
     lines.push(`\n*${label}*`);
     if (!articles.length) {
-      lines.push("- No fresh stories (API returned empty).");
+      if (duplicatesExhausted) {
+        lines.push("- No fresh stories (already covered).");
+      } else {
+        lines.push("- No fresh stories (API returned empty).");
+      }
       continue;
     }
     for (const article of articles) {
@@ -94,15 +175,19 @@ const formatNewsSections = (newsByTopic) => {
   return lines.join("\n");
 };
 
-const formatNewsForDiscord = (topic, articles) => {
+const formatNewsForDiscord = (topic) => {
   const lines = [`__**${topic.label}**__`];
-  if (!articles.length) {
-    lines.push("• No fresh stories.");
-  } else {
-    for (const article of articles) {
-      const source = article.source ? ` (${article.source})` : "";
-      lines.push(`• ${article.title}${source}\n  ${article.url}`);
+  if (!topic.articles.length) {
+    if (topic.duplicatesExhausted) {
+      lines.push("• No fresh stories (already covered).");
+    } else {
+      lines.push("• No fresh stories (API returned empty).");
     }
+    return lines.join("\n");
+  }
+  for (const article of topic.articles) {
+    const source = article.source ? ` (${article.source})` : "";
+    lines.push(`• ${article.title}${source}\n  ${article.url}`);
   }
   return lines.join("\n");
 };
@@ -238,7 +323,7 @@ const formatAssistantTasksDiscord = (tasks) => {
 };
 
 const formatNewsDigestDiscord = (newsByTopic) => {
-  const sections = newsByTopic.map((topic) => formatNewsForDiscord(topic, topic.articles));
+  const sections = newsByTopic.map((topic) => formatNewsForDiscord(topic));
   return sections.join("\n\n---\n\n");
 };
 
@@ -446,10 +531,25 @@ const formatHeader = () => {
 };
 
 const main = async () => {
+  const history = await loadHistory();
   const newsByTopic = [];
   for (const topic of topics) {
     const articles = await fetchNews(topic.query, topic.limit);
-    newsByTopic.push({ ...topic, articles });
+    const historyForTopic = Array.isArray(history[topic.key]) ? history[topic.key] : [];
+    const freshArticles = articles.filter((article) => {
+      const identifier = getArticleIdentifier(article);
+      if (!identifier) {
+        return true;
+      }
+      return !historyForTopic.includes(identifier);
+    });
+    newsByTopic.push({
+      ...topic,
+      articles: freshArticles,
+      duplicatesExhausted: articles.length > 0 && freshArticles.length === 0,
+      apiReturnedResults: articles.length > 0,
+      reportedIds: freshArticles.map((article) => getArticleIdentifier(article)).filter(Boolean)
+    });
   }
 
   const remindersToday = getRemindersDueToday();
@@ -503,6 +603,7 @@ const main = async () => {
     console.error("Discord send failed:", error.message);
   }
 
+  await updateHistory(history, newsByTopic);
   await sendMonitoringUpdate(`✅ ${formatStatusTimestamp()} — morning-brief success`);
 };
 

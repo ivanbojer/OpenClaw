@@ -8,9 +8,9 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 # --- Configuration ---
 # Your local OpenClaw workspace directory
 WORKSPACE_DIR="/Users/djloky/.openclaw/workspace"
-WORKSPACE_DIR_CODING="/Users/djloky/.openclaw/workspace-coding"
 # A temporary directory to stage the backup before committing
 STAGING_DIR="/tmp/agent_backup_staging"
+export STAGING_DIR
 # The private GitHub repository URL
 GIT_REPO_URL="git@github.com:ivanbojer/OpenClaw.git"
 # Path to the discord notification script
@@ -49,7 +49,6 @@ git pull origin main --rebase || log "Initial backup, repository is empty."
 log "Copying critical configuration files..."
 # Workspace files (SOUL, MEMORY, USER, etc.)
 rsync -av --exclude=node_modules --exclude=.cache --exclude=__pycache__ --exclude=dev --exclude=.next "$WORKSPACE_DIR" "$STAGING_DIR/"
-rsync -av --exclude=node_modules --exclude=.cache --exclude=__pycache__ --exclude=dev --exclude=.next "$WORKSPACE_DIR_CODING" "$STAGING_DIR/"
 
 # Skill configurations from workspace
 # Note: This assumes custom skills are in the workspace. Global skills are not backed up.
@@ -76,16 +75,85 @@ crontab -l > "$STAGING_DIR/crontab.txt" 2>/dev/null || touch "$STAGING_DIR/cront
 
 # 4. Sanitize Secrets
 log "Scanning for and redacting secrets..."
-# Use gsed for macOS compatibility (brew install gnu-sed)
-# This uses a generic pattern to find common key/token formats.
-# It's not foolproof but covers many cases.
-find . -type f -not -path "./.git/*" -print0 | while IFS= read -r -d '' file; do
-  # Pattern for generic keys/tokens:
-  gsed -i -E 's/([A-Z0-9_]+_?(API_KEY|TOKEN|SECRET|PASSWORD))\s*=\s*['"'"'"]?[a-zA-Z0-9_/-]{20,}['"'"'"]?/1=[REDACTED]/gi' "$file"
-  # Pattern for GitHub tokens (ghp_, gho_, ghu_, ghs_):
-  gsed -i -E 's/(gh[pous]_[a-zA-Z0-9]{36})/\[REDACTED_GITHUB_TOKEN\]/g' "$file"
-done
+
+python3 <<'PY_RED'
+import json
+import os
+import pathlib
+import re
+
+root = pathlib.Path(os.environ["STAGING_DIR"])
+pattern_json = re.compile(r'("[^"]*(token|secret|password|api[_-]?key)[^"]*"\s*:\s*)"([^"]+)"', re.IGNORECASE)
+pattern_env = re.compile(r"((?:^|\s)(?:[A-Z0-9_]+(?:TOKEN|SECRET|PASSWORD|KEY))[ \t]*=[ \t]*)([\"\']?)[^\s\"\']{12,}\2", re.IGNORECASE | re.MULTILINE)
+pattern_gh = re.compile(r'gh[pous]_[a-zA-Z0-9]{36}')
+
+SENSITIVE_KEYS = {
+    'token', 'bot_token', 'bottoken', 'bot token', 'discord_token', 'discord bot token',
+    'secret', 'password', 'api_key', 'apikey', 'api-key', 'client_secret', 'auth', 'auth_token'
+}
+
+def scrub_json(data):
+    changed = False
+    if isinstance(data, dict):
+        new = {}
+        for k, v in data.items():
+            lower = k.lower()
+            if lower in SENSITIVE_KEYS and isinstance(v, str) and len(v) >= 4:
+                new[k] = '[REDACTED]'
+                changed = True
+            else:
+                new_v, sub_changed = scrub_json(v)
+                new[k] = new_v
+                changed = changed or sub_changed
+        return new, changed
+    if isinstance(data, list):
+        new_list = []
+        for item in data:
+            new_item, sub_changed = scrub_json(item)
+            new_list.append(new_item)
+            changed = changed or sub_changed
+        return new_list, changed
+    return data, False
+
+files_scrubbed = 0
+for path in root.rglob('*'):
+    if path.is_dir() or '.git' in path.parts:
+        continue
+    try:
+        text_content = path.read_text()
+    except UnicodeDecodeError:
+        continue
+    original = text_content
+    if path.suffix.lower() == '.json':
+        try:
+            data = json.loads(text_content)
+        except Exception:
+            pass
+        else:
+            new_data, changed = scrub_json(data)
+            if changed:
+                path.write_text(json.dumps(new_data, indent=2))
+                files_scrubbed += 1
+                continue
+    text_content = pattern_json.sub(lambda m: f"{m.group(1)}\"[REDACTED]\"", text_content)
+    text_content = pattern_env.sub(lambda m: f"{m.group(1)}[REDACTED]", text_content)
+    text_content = pattern_gh.sub('[REDACTED_GITHUB_TOKEN]', text_content)
+    if text_content != original:
+        path.write_text(text_content)
+        files_scrubbed += 1
+
+print(f"Scrubbed {files_scrubbed} files")
+PY_RED
+
 log "Secret scan and redaction complete."
+
+# 4.1 Verify no obvious secrets remain
+if git grep -nE '\"[^\"]*(token|secret|password|api(_|-)?key)[^\"]*\"\s*:\s*\"[^\"]{16,}\"' >/tmp/backup_secret_hits 2>&1; then
+  log "ERROR: Potential secrets detected after redaction:"
+  cat /tmp/backup_secret_hits
+  exit 1
+fi
+rm -f /tmp/backup_secret_hits
 
 # 5. Commit and Push
 log "Committing changes..."

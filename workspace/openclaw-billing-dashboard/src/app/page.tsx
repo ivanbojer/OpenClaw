@@ -183,7 +183,7 @@ export default function HomePage() {
               {data.services.map((service, index) => (
                 <Bar
                   key={service.service}
-                  dataKey={service.service}
+                  dataKey=[REDACTED]
                   stackId="a"
                   fill={COLORS[index % COLORS.length]}
                 />

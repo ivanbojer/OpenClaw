@@ -3,7 +3,7 @@
 import { execSync } from "node:child_process";
 
 const DISCORD_CHANNEL_ID = process.env.DISCORD_MONITORING_CHANNEL_ID || "1474872383579099257";
-const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const DISCORD_BOT_TOKEN = [REDACTED]
 
 if (!DISCORD_BOT_TOKEN) {
   console.error("Missing DISCORD_BOT_TOKEN; cannot send maintenance report.");

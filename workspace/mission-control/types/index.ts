@@ -40,3 +40,34 @@ export type Idea = {
   impact: "moonshot" | "quick win" | "experiment";
   pitch: string;
 };
+
+export type HealthStatus = "healthy" | "warn" | "error";
+
+export type OpsConsoleLaunchdJob = {
+  raw: string;
+  label: string;
+  pid: number | null;
+  statusCode: number | null;
+  state: "running" | "idle" | "error";
+};
+
+export type OpsConsole = {
+  cron: {
+    lines: string[];
+    status: HealthStatus;
+    summary: string;
+  };
+  launchd: {
+    jobs: OpsConsoleLaunchdJob[];
+    status: HealthStatus;
+    summary: string;
+  };
+  logs: {
+    morningBrief: string;
+    backup: string;
+    issues: {
+      morningBrief: boolean;
+      backup: boolean;
+    };
+  };
+};

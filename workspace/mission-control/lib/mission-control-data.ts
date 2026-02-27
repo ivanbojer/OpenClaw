@@ -1,22 +1,221 @@
-import type { Idea, Initiative, Integration, Signal, InitiativeStatus } from "@/types";
+import type {
+  Idea,
+  Initiative,
+  Integration,
+  Signal,
+  InitiativeStatus,
+  OpsConsole,
+  OpsConsoleLaunchdJob,
+  HealthStatus
+} from "@/types";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import { getReminders, buildReminderJob } from "./reminders";
 import { getAppleNotesSummary } from "./apple-notes";
 import { getGoldQuote } from "./market";
 import { getDiscordStatus } from "./discord";
 import { runCommand } from "./run-command";
 
+const MORNING_BRIEF_CRON_TARGET = "/Users/djloky/.openclaw/workspace/morning-brief/run.sh";
+const OPS_ALERT_STATE_FILE = "/tmp/ops-console-alert.json";
+const DISCORD_SCRIPT = "/Users/djloky/.openclaw/workspace/send_discord_notification.sh";
+
+const safeCommand = (cmd: string) => {
+  try {
+    return runCommand(cmd).trim();
+  } catch (error) {
+    return (error as Error).message;
+  }
+};
+
+const readLogTail = (path: string) =>
+  safeCommand(`[ -f ${path} ] && tail -n 40 ${path} || echo "No log available"`);
+
+const logHasIssue = (log: string) => /error|failed|exception|traceback/i.test(log);
+
+const escapeForSingleQuotes = (value: string) => value.replace(/'/g, `'"'"'`);
+
+const sendDiscordAlert = (message: string) => {
+  if (!existsSync(DISCORD_SCRIPT)) {
+    return;
+  }
+
+  try {
+    runCommand(`${DISCORD_SCRIPT} '${escapeForSingleQuotes(message)}'`);
+  } catch (error) {
+    console.error("Mission Control: failed to send Discord alert", error);
+  }
+};
+
+const readLastAlertSignature = () => {
+  try {
+    if (!existsSync(OPS_ALERT_STATE_FILE)) {
+      return "";
+    }
+    const data = JSON.parse(readFileSync(OPS_ALERT_STATE_FILE, "utf-8"));
+    return typeof data.signature === "string" ? data.signature : "";
+  } catch (error) {
+    console.error("Mission Control: unable to read ops alert state", error);
+    return "";
+  }
+};
+
+const writeAlertSignature = (signature: string) => {
+  try {
+    writeFileSync(OPS_ALERT_STATE_FILE, JSON.stringify({ signature }), "utf-8");
+  } catch (error) {
+    console.error("Mission Control: unable to write ops alert state", error);
+  }
+};
+
+const maybeSendOpsAlerts = (alerts: string[]) => {
+  const signature = alerts.join(" | ");
+  if (!alerts.length) {
+    if (readLastAlertSignature()) {
+      writeAlertSignature("");
+    }
+    return;
+  }
+
+  const previous = readLastAlertSignature();
+  if (previous === signature) {
+    return;
+  }
+
+  sendDiscordAlert(`⚠️ Ops Console: ${alerts.join(" | ")}`);
+  writeAlertSignature(signature);
+};
+
+const normalizeCronLines = (output: string) =>
+  output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) =>
+      Boolean(line) &&
+      !line.startsWith("#") &&
+      !line.startsWith("SHELL=") &&
+      !line.startsWith("PATH=") &&
+      !line.startsWith("MAILTO=")
+    );
+
+const assessCronHealth = (output: string) => {
+  const lines = normalizeCronLines(output);
+  const displayLines = lines.length
+    ? lines
+    : output
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+  let status: HealthStatus = "healthy";
+  let summary = `${lines.length} scheduled entr${lines.length === 1 ? "y" : "ies"}`;
+
+  if (!output || /no crontab/i.test(output)) {
+    status = "error";
+    summary = "crontab missing";
+  } else if (!lines.length) {
+    status = "warn";
+    summary = "no runnable cron entries";
+  } else if (!lines.some((line) => line.includes(MORNING_BRIEF_CRON_TARGET))) {
+    status = "warn";
+    summary = "morning-brief job missing";
+  }
+
+  if (/command not found|error/i.test(output)) {
+    status = "error";
+    summary = "crontab command failed";
+  }
+
+  return { lines: displayLines, status, summary };
+};
+
+const parseLaunchdOutput = (output: string) => {
+  const rows = output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const jobs: OpsConsoleLaunchdJob[] = rows.map((raw) => {
+    const match = raw.match(/^(\S+)\s+(\S+)\s+(.+)$/);
+    const pidRaw = match ? match[1] : "-";
+    const statusRaw = match ? match[2] : "";
+    const label = match ? match[3] : raw;
+    const pid = pidRaw === "-" ? null : Number(pidRaw) || null;
+    const statusCode = statusRaw ? Number(statusRaw) || null : null;
+
+    let state: "running" | "idle" | "error" = "running";
+    if (!pid) {
+      state = statusCode && statusCode > 0 ? "error" : "idle";
+    } else if (statusCode && statusCode > 0) {
+      state = "error";
+    }
+
+    return {
+      raw,
+      label,
+      pid,
+      statusCode,
+      state
+    } satisfies OpsConsoleLaunchdJob;
+  });
+
+  if (!jobs.length && output && /error|command not found/i.test(output)) {
+    jobs.push({
+      raw: output,
+      label: "launchctl",
+      pid: null,
+      statusCode: null,
+      state: "error"
+    });
+  }
+
+  if (!jobs.length) {
+    jobs.push({
+      raw: "No com.djloky jobs listed",
+      label: "com.djloky",
+      pid: null,
+      statusCode: null,
+      state: "error"
+    });
+  }
+
+  const counts = jobs.reduce(
+    (acc, job) => {
+      acc[job.state] += 1;
+      return acc;
+    },
+    { running: 0, idle: 0, error: 0 }
+  );
+
+  let status: HealthStatus = "healthy";
+  if (counts.error > 0) status = "error";
+  else if (counts.idle > 0) status = "warn";
+
+  const summaryParts = [];
+  if (counts.running) summaryParts.push(`${counts.running} running`);
+  if (counts.idle) summaryParts.push(`${counts.idle} idle`);
+  if (counts.error) summaryParts.push(`${counts.error} error`);
+
+  const summary = summaryParts.length ? summaryParts.join(" • ") : "No launchd telemetry";
+
+  return {
+    jobs,
+    status,
+    summary
+  };
+};
+
 const getMorningBriefStatus = (): { active: boolean; status: InitiativeStatus; notes: string } => {
   try {
-    const output = runCommand(
-      "launchctl list | grep com.djloky.morningbrief || true"
-    ).trim();
-    const active = output.includes("com.djloky.morningbrief");
+    const output = runCommand("crontab -l || true");
+    const active = output
+      .split("\n")
+      .some((line) => line.includes(MORNING_BRIEF_CRON_TARGET));
     return {
       active,
       status: active ? "shipping" : "blocked",
       notes: active
-        ? "LaunchAgent com.djloky.morningbrief loaded"
-        : "LaunchAgent missing — run launchctl bootstrap"
+        ? "Cron entry found for morning-brief (08:00 PT)."
+        : "Cron entry missing — add morning-brief to crontab."
     };
   } catch (error) {
     return {
@@ -25,6 +224,28 @@ const getMorningBriefStatus = (): { active: boolean; status: InitiativeStatus; n
       notes: (error as Error).message
     };
   }
+};
+
+const collectOpsAlerts = (opsConsole: OpsConsole) => {
+  const alerts: string[] = [];
+
+  if (opsConsole.cron.status !== "healthy") {
+    alerts.push(`[Cron] ${opsConsole.cron.summary}`);
+  }
+
+  if (opsConsole.launchd.status !== "healthy") {
+    alerts.push(`[Launchd] ${opsConsole.launchd.summary}`);
+  }
+
+  if (opsConsole.logs.issues.morningBrief) {
+    alerts.push("Morning Brief log contains errors");
+  }
+
+  if (opsConsole.logs.issues.backup) {
+    alerts.push("Backup log contains errors");
+  }
+
+  return alerts;
 };
 
 export const getMissionControlTelemetry = async () => {
@@ -38,10 +259,31 @@ export const getMissionControlTelemetry = async () => {
     process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID
   );
 
+  const cronOutput = safeCommand("crontab -l || true");
+  const launchOutput = safeCommand("launchctl list | grep com.djloky || true");
+  const cron = assessCronHealth(cronOutput);
+  const launchd = parseLaunchdOutput(launchOutput);
+  const morningBriefLog = readLogTail("/tmp/morning-brief.log");
+  const backupLog = readLogTail("/tmp/backup.log");
+  const logs = {
+    morningBrief: morningBriefLog,
+    backup: backupLog,
+    issues: {
+      morningBrief: logHasIssue(morningBriefLog),
+      backup: logHasIssue(backupLog)
+    }
+  };
+
+  const opsConsole: OpsConsole = {
+    cron,
+    launchd,
+    logs
+  };
+
   const initiatives: Initiative[] = [
     {
       id: "init-morning-brief",
-      title: "Telegram Morning Brief",
+      title: "Morning Brief",
       owner: "DJLoky",
       status: morningBrief.status,
       eta: "Daily · 08:00 PT",
@@ -72,7 +314,7 @@ export const getMissionControlTelemetry = async () => {
   const automationQueue = [
     {
       id: "auto-morning-brief",
-      title: "Telegram Morning Brief",
+      title: "Morning Brief",
       cadence: "08:00 PT daily",
       nextRun: morningBrief.active ? "08:00 PT" : "Requires bootstrap",
       status: morningBrief.active ? "healthy" : "error",
@@ -133,7 +375,10 @@ export const getMissionControlTelemetry = async () => {
     }
   ];
 
-  return { initiatives, automationQueue, integrations, signals, ideas };
+  const opsAlerts = collectOpsAlerts(opsConsole);
+  maybeSendOpsAlerts(opsAlerts);
+
+  return { initiatives, automationQueue, integrations, signals, ideas, opsConsole };
 };
 
 const remindersSignal = (reminders: ReturnType<typeof getReminders>): Signal => {

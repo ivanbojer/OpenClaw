@@ -71,7 +71,7 @@
     "web": {
       "search": {
         "enabled": true,
-        "apiKey": "BSA90L4pwI6fZBlml5h-uxcpnDFawzV"
+        "apiKey": "[REDACTED]"
       },
       "fetch": {
         "enabled": true
@@ -101,14 +101,15 @@
     "telegram": {
       "enabled": true,
       "dmPolicy": "pairing",
-      "botToken": "8484002262:AAGvqxDWJ8_dgvQlVMD1rUHjSwmOJmXsUO0",
+      "botToken": "[REDACTED]",
       "groupPolicy": "allowlist",
       "streaming": "partial"
     },
     "discord": {
       "enabled": true,
       "groupPolicy": "allowlist",
-      "streaming": "off"
+      "streaming": "off",
+      "token": "[REDACTED]"
     }
   },
   "gateway": {
@@ -117,7 +118,7 @@
     "bind": "loopback",
     "auth": {
       "mode": "token",
-      "token": "12b266a01d745a2650be5ef656a631cc818bf057049989ca"
+      "token": "[REDACTED]"
     },
     "tailscale": {
       "mode": "off",
@@ -136,6 +137,7 @@
   },
   "skills": {
     "install": {
+      "preferBrew": true,
       "nodeManager": "npm"
     }
   },
