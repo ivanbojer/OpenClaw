@@ -1,2 +1,0 @@
-30 4 * * * /Users/djloky/.openclaw/workspace/backup.sh >> /tmp/backup.log 2>&1
-0 8 * * * /Users/djloky/.openclaw/workspace/morning-brief/run.sh >> /tmp/morning-brief.log 2>&1
