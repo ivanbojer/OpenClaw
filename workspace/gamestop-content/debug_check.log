@@ -1,0 +1,7 @@
+2026-03-01T04:27:12.734Z [INFO] Skipping fetch (no --fetch flag). Processing Discord commands only.
+Initializing TwitterClient with keys:
+Consumer Key: yEnJh...
+Access Token: 99793...
+Attempting to post tweet: A user shares a suspicious transaction involving GME tokens, hinting at possible connections to prominent figures in the community. https://x.com/i/web/status/2027962775763354087 #GME #GameStop
+Tweet success: 2027963845827059732
+2026-03-01T04:27:13.758Z [INFO] Run complete. Posted 1, pending 8

@@ -1,0 +1,22 @@
+{
+  "name": "gamestop-content",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "openai": "^6.25.0",
+    "twitter-api-v2": "^1.23.2",
+    "undici": "^7.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.9"
+  }
+}

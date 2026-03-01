@@ -48,7 +48,7 @@ git pull origin main --rebase || log "Initial backup, repository is empty."
 # 3. Copy Critical Files
 log "Copying critical configuration files..."
 # Workspace files (SOUL, MEMORY, USER, etc.)
-rsync -av --exclude=node_modules --exclude=.cache --exclude=__pycache__ --exclude=dev --exclude=.next "$WORKSPACE_DIR" "$STAGING_DIR/"
+rsync -av --exclude=node_modules --exclude=.cache --exclude=__pycache__ --exclude=dev --exclude=.next --exclude=.git "$WORKSPACE_DIR" "$STAGING_DIR/"
 
 # Skill configurations from workspace
 # Note: This assumes custom skills are in the workspace. Global skills are not backed up.

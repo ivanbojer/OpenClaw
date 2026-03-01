@@ -1,7 +1,7 @@
 {
   "meta": {
-    "lastTouchedVersion": "2026.2.25",
-    "lastTouchedAt": "2026-02-26T06:06:44.155Z"
+    "lastTouchedVersion": "2026.2.26",
+    "lastTouchedAt": "2026-02-28T18:29:20.424Z"
   },
   "wizard": {
     "lastRunAt": "2026-02-26T06:06:44.132Z",
@@ -27,7 +27,7 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "Gemini-PRO",
+        "primary": "google/gemini-3-pro-preview",
         "fallbacks": [
           "GPT",
           "Gemini-flash"
@@ -87,6 +87,9 @@
     "restart": true,
     "ownerDisplay": "raw"
   },
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
   "hooks": {
     "internal": {
       "enabled": true,
@@ -107,9 +110,9 @@
     },
     "discord": {
       "enabled": true,
+      "token": "[REDACTED]",
       "groupPolicy": "allowlist",
-      "streaming": "off",
-      "token": "[REDACTED]"
+      "streaming": "off"
     }
   },
   "gateway": {
