@@ -24,6 +24,25 @@
       }
     }
   },
+  "memory": {
+    "backend": "qmd",
+    "citations": "auto",
+    "qmd": {
+      "includeDefaultMemory": true,
+      "searchMode": "query",
+      "update": {
+        "interval": "1h",
+        "debounceMs": 15000,
+        "onBoot": true,
+        "waitForBootSync": false
+      },
+      "limits": {
+        "maxResults": 10,
+        "maxSnippetChars": 1000,
+        "timeoutMs": 5000
+      }
+    }
+  },
   "agents": {
     "defaults": {
       "model": {
@@ -49,7 +68,13 @@
       },
       "workspace": "/Users/djloky/.openclaw/workspace",
       "compaction": {
-        "mode": "safeguard"
+        "mode": "safeguard",
+        "memoryFlush": {
+          "enabled": true,
+          "softThresholdTokens": 6000,
+          "systemPrompt": "Session nearing compaction. Store durable memories now.",
+          "prompt": "Write any lasting notes to memory/YYYY-MM-DD.md; reply with NO_REPLY if nothing to store.",
+        }
       },
       "heartbeat": {
         "every": "30m",

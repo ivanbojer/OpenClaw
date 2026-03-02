@@ -1,0 +1,31 @@
+prompt_guard:
+  sensitivity: medium
+  
+  # Owner IDs (bypass scanning)
+  owner_ids:
+    - "YOUR_TELEGRAM_ID"
+  
+  # MONITOR MODE (Phase 1) - Log everything, block nothing
+  actions:
+    LOW: log
+    MEDIUM: log
+    HIGH: log
+    CRITICAL: log
+  
+  # PRODUCTION MODE (Phase 2) - Enable after review:
+  # actions:
+  #   LOW: log
+  #   MEDIUM: warn
+  #   HIGH: block
+  #   CRITICAL: block_notify
+  
+  rate_limit:
+    enabled: true
+    max_requests: 30
+    window_seconds: 60
+  
+  logging:
+    enabled: true
+    path: /Users/djloky/.openclaw/logs/prompt-guard.log
+    include_message: true
+
