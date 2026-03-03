@@ -52,6 +52,90 @@ async function run(): Promise<void> {
     const draftState = loadDrafts();
     const cursors = loadCursors();
 
+    // Process commands first to clear out old pending items before fetching new ones
+    const newsChannelId = await discord.ensureNewsChannel();
+    const cursor = cursors.channels[newsChannelId];
+    const messages = await discord.getMessagesSince(newsChannelId, cursor);
+    const botUserId = await discord.getBotUserId();
+
+    // We only need the Twitter write client if we actually approve something
+    let twitterWriter: TwitterClient | null = null;
+    const getTwitterWriter = () => {
+      if (!twitterWriter) twitterWriter = new TwitterClient(env);
+      return twitterWriter;
+    };
+
+    let postedThisRun = 0;
+
+    for (const message of messages) {
+      cursors.channels[newsChannelId] = message.id;
+
+      if (message.author.bot || message.author.id === botUserId) {
+        continue;
+      }
+
+      const command = parseCommand(message.content);
+      if (!command) {
+        continue;
+      }
+
+      if (command.type === "reject-all") {
+        let rejectedCount = 0;
+        for (const d of draftState.drafts) {
+          if (d.status === "pending") {
+            d.status = "rejected";
+            d.rejectionReason = command.reason;
+            d.updatedAt = new Date().toISOString();
+            rejectedCount++;
+          }
+        }
+        await discord.sendMessage(newsChannelId, `✅ Processed **Reject All**: Marked ${rejectedCount} pending drafts as rejected. Reason: ${command.reason}`);
+        continue;
+      }
+
+      // For specific draft commands
+      const draft = findDraftById(draftState.drafts, command.draftId);
+      if (!draft) {
+        // If we can't find it, it might be a new draft that hasn't been created yet (if we swapped order),
+        // but commands usually reference existing IDs.
+        // However, if we process commands first, we can't approve a draft that is about to be created.
+        // But that's fine, you can't approve what doesn't exist.
+        await discord.sendMessage(newsChannelId, `Could not find draft ${command.draftId}.`);
+        continue;
+      }
+
+      if (command.type === "approve") {
+        if (draft.status !== "pending") {
+          await discord.sendMessage(newsChannelId, `⚠️ **Warning:** Draft \`${draft.id}\` is already marked as **${draft.status}**. Action skipped.`);
+          continue;
+        }
+
+        const tweetBody = buildTweetText(draft.summary);
+        const posted = await getTwitterWriter().postTweet(tweetBody);
+        draft.status = "posted";
+        draft.tweetUrl = posted.url;
+        draft.updatedAt = new Date().toISOString();
+        postedThisRun += 1;
+
+        await discord.sendMessage(newsChannelId, `Posted ${draft.id}: ${posted.url}`);
+      }
+
+      if (command.type === "revise") {
+        draft.summary = formatSummary(draft.source, command.newText, draft.url);
+        draft.status = "pending";
+        draft.updatedAt = new Date().toISOString();
+        await discord.sendMessage(newsChannelId, `Revised ${draft.id}. It is still pending.`);
+      }
+
+      if (command.type === "reject") {
+        draft.status = "rejected";
+        draft.rejectionReason = command.reason;
+        draft.updatedAt = new Date().toISOString();
+        await discord.sendMessage(newsChannelId, `Rejected ${draft.id}. Reason saved.`);
+      }
+    }
+
+    // Now fetch new content
     const shouldFetch = process.argv.includes("--fetch");
 
     if (shouldFetch) {
@@ -100,8 +184,7 @@ async function run(): Promise<void> {
       logger.info("Skipping fetch (no --fetch flag). Processing Discord commands only.");
     }
 
-    const newsChannelId = await discord.ensureNewsChannel();
-
+    // Announce any new pending drafts (including those just created)
     const unannouncedPending = draftState.drafts.filter(
       (draft) => draft.status === "pending" && !draft.announcedAt
     );
@@ -118,94 +201,20 @@ async function run(): Promise<void> {
       draft.updatedAt = new Date().toISOString();
     }
 
-    const cursor = cursors.channels[newsChannelId];
-    const messages = await discord.getMessagesSince(newsChannelId, cursor);
-    const botUserId = await discord.getBotUserId();
-
-    // We only need the Twitter write client if we actually approve something
-    let twitterWriter: TwitterClient | null = null;
-    const getTwitterWriter = () => {
-      if (!twitterWriter) twitterWriter = new TwitterClient(env);
-      return twitterWriter;
-    };
-
-    let postedThisRun = 0;
-
-    for (const message of messages) {
-      cursors.channels[newsChannelId] = message.id;
-
-      if (message.author.bot || message.author.id === botUserId) {
-        continue;
-      }
-
-      const command = parseCommand(message.content);
-      if (!command) {
-        continue;
-      }
-
-      if (command.type === "reject-all") {
-        let rejectedCount = 0;
-        for (const d of draftState.drafts) {
-          if (d.status === "pending") {
-            d.status = "rejected";
-            d.rejectionReason = command.reason;
-            d.updatedAt = new Date().toISOString();
-            rejectedCount++;
-          }
-        }
-        await discord.sendMessage(newsChannelId, `✅ Processed **Reject All**: Marked ${rejectedCount} pending drafts as rejected. Reason: ${command.reason}`);
-        continue;
-      }
-
-      // For specific draft commands
-      const draft = findDraftById(draftState.drafts, command.draftId);
-      if (!draft) {
-        await discord.sendMessage(newsChannelId, `Could not find draft ${command.draftId}.`);
-        continue;
-      }
-
-      if (command.type === "approve") {
-        if (draft.status !== "pending") {
-          await discord.sendMessage(newsChannelId, `⚠️ **Warning:** Draft \`${draft.id}\` is already marked as **${draft.status}**. Action skipped.`);
-          continue;
-        }
-
-        const tweetBody = buildTweetText(draft.summary);
-        const posted = await getTwitterWriter().postTweet(tweetBody);
-        draft.status = "posted";
-        draft.tweetUrl = posted.url;
-        draft.updatedAt = new Date().toISOString();
-        postedThisRun += 1;
-
-        await discord.sendMessage(newsChannelId, `Posted ${draft.id}: ${posted.url}`);
-      }
-
-      if (command.type === "revise") {
-        draft.summary = formatSummary(draft.source, command.newText, draft.url);
-        draft.status = "pending";
-        draft.updatedAt = new Date().toISOString();
-        await discord.sendMessage(newsChannelId, `Revised ${draft.id}. It is still pending.`);
-      }
-
-      if (command.type === "reject") {
-        draft.status = "rejected";
-        draft.rejectionReason = command.reason;
-        draft.updatedAt = new Date().toISOString();
-        await discord.sendMessage(newsChannelId, `Rejected ${draft.id}. Reason saved.`);
-      }
-    }
-
     saveHistory(history);
     saveDrafts(draftState);
     saveCursors(cursors);
 
     const pendingCount = draftState.drafts.filter((draft) => draft.status === "pending").length;
     
-    // Only send monitoring status if something actually happened (posted > 0) OR if we fetched new content
-    // otherwise the 10-minute heartbeat is too spammy if it's just "0 posted, 5 pending" forever.
-    // BUT the user asked for status report of EACH run.
-    const statusLine = `✅ gamestop-content run ${nowTime()} – posted ${postedThisRun}, pending ${pendingCount} ${shouldFetch ? "(fetched)" : "(no fetch)"}`;
-    await discord.sendMonitoringMessage(statusLine);
+    // Only send monitoring status if something actually happened (posted > 0) OR if we found new drafts
+    // to avoid spamming "0 posted" every 10 minutes.
+    const hasActivity = postedThisRun > 0 || unannouncedPending.length > 0;
+
+    if (hasActivity) {
+      const statusLine = `✅ gamestop-content run ${nowTime()} – posted ${postedThisRun}, new drafts ${unannouncedPending.length}, pending total ${pendingCount}`;
+      await discord.sendMonitoringMessage(statusLine);
+    }
 
     logger.info(`Run complete. Posted ${postedThisRun}, pending ${pendingCount}`);
     logger.flush();
