@@ -11,3 +11,5 @@
 * [Task]: "gamestop-content" runs every 10 minutes via cron (/Users/djloky/.openclaw/workspace/gamestop-content/run.sh). Checks Twitter/Brave, posts drafts to Discord, and processes Approve/Reject commands. (2026-02-28)
 
 * [Task]: To fetch new gamestop content manually: `cd workspace/gamestop-content && npx tsx src/index.ts --fetch`
+
+* [Project]: Created "terraforming" skill folder to provision GCP (and later AWS) infrastructure via Terraform. Uses staging/production folders. If no template exists in production or staging, the skill generates a new one in staging. Uses local state per environment. Initial template was a GCP VM using ADC auth. Additions to staging are manually promoted to production. (2026-03-04)
