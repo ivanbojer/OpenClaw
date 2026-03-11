@@ -1,11 +1,11 @@
 {
   "meta": {
-    "lastTouchedVersion": "2026.2.26",
-    "lastTouchedAt": "2026-03-03T00:00:56.442Z"
+    "lastTouchedVersion": "2026.3.8",
+    "lastTouchedAt": "2026-03-11T05:51:46.410Z"
   },
   "wizard": {
-    "lastRunAt": "2026-03-03T00:00:56.409Z",
-    "lastRunVersion": "2026.2.26",
+    "lastRunAt": "2026-03-09T20:43:19.713Z",
+    "lastRunVersion": "2026.3.8",
     "lastRunCommand": "configure",
     "lastRunMode": "local"
   },
@@ -37,7 +37,6 @@
           "google/gemini-2.5-flash-lite",
           "google/gemini-3.1-pro-preview",
           "google/gemini-3-flash-preview",
-          "openrouter/auto",
           "openrouter/google/gemini-3.1-pro-preview",
           "openrouter/google/gemini-3-flash-preview",
           "openrouter/google/gemini-2.5-flash-lite",
@@ -67,12 +66,30 @@
         "openrouter/openai/gpt-5.1-codex": {}
       },
       "workspace": "/Users/djloky/.openclaw/workspace",
+      "memorySearch": {
+        "sources": [
+          "memory",
+          "sessions"
+        ],
+        "provider": "local",
+        "fallback": "none",
+        "store": {
+          "vector": {
+            "enabled": true
+          }
+        },
+        "query": {
+          "hybrid": {
+            "enabled": true
+          }
+        }
+      },
       "compaction": {
         "mode": "safeguard",
         "memoryFlush": {
           "enabled": true,
           "softThresholdTokens": 4000,
-          "prompt": "Write any lasting notes to memory/YYYY-MM-DD.md; reply with NO_REPLY if nothing to store.",
+          "prompt": "Append any new, lasting notes to memory/YYYY-MM-DD.md; do not overwrite existing content; reply with NO_REPLY if nothing to store.",
           "systemPrompt": "Session nearing compaction. Store durable memories now."
         }
       },
@@ -88,7 +105,8 @@
     },
     "list": [
       {
-        "id": "main"
+        "id": "main",
+        "model": "openrouter/openrouter/auto"
       }
     ]
   },
@@ -130,7 +148,7 @@
       "enabled": true,
       "dmPolicy": "pairing",
       "botToken": "[REDACTED]",
-      "groupPolicy": "allowlist",
+      "groupPolicy": "open",
       "streaming": "partial"
     },
     "discord": {
@@ -165,27 +183,18 @@
   },
   "memory": {
     "backend": "qmd",
-    "citations": "auto",
     "qmd": {
-      "searchMode": "query",
       "includeDefaultMemory": true,
-      "paths": [
-        {
-          "path": "/Users/djloky/Library/Mobile Documents/com~apple~CloudDocs/openclaw-vault/Welcome.md",
-          "name": "obsidian",
-          "pattern": "**/*.md"
-        }
-      ],
+      "sessions": {
+        "enabled": true
+      },
       "update": {
         "interval": "5m",
         "debounceMs": 15000,
-        "onBoot": true,
-        "waitForBootSync": false
+        "onBoot": true
       },
       "limits": {
-        "maxResults": 6,
-        "maxSnippetChars": 700,
-        "timeoutMs": 4000
+        "timeoutMs": 15000
       }
     }
   },
@@ -193,6 +202,10 @@
     "install": {
       "preferBrew": true,
       "nodeManager": "npm"
+    },
+    "load": {
+      "watch": true,
+      "watchDebounceMs": 250
     }
   },
   "plugins": {

@@ -1,0 +1,40 @@
+"memory": {
+    "backend": "qmd",
+    "qmd": {
+      "includeDefaultMemory": true,
+      "sessions": {
+        "enabled": true
+      },
+      "update": {
+        "interval": "5m",
+        "debounceMs": 15000,
+        "onBoot": true
+      },
+      "limits": {
+        "timeoutMs": 15000
+      },
+      "scope": {
+        "default": "deny",
+        "rules": [
+          {
+            "action": "allow",
+            "match": {
+              "chatType": "direct"
+            }
+          },
+          {
+            "action": "deny",
+            "match": {
+              "keyPrefix": "discord:channel:"
+            }
+          },
+          {
+            "action": "deny",
+            "match": {
+              "rawKeyPrefix": "agent:main:discord:"
+            }
+          }
+        ]
+      }
+    }
+  },
