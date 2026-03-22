@@ -23,13 +23,13 @@ When deploying resources to GCP, the following default parameters will be used u
 - **Project:** project-1268863f-862d-4aa6-b76 (ask for GCP project otherwise)
 - **Region/Zone:** us-central-1 (unless specified otherwise)
 - **Machine Type:** e2-micro
-- **OS Image:** ubuntu-22.04-lts
+- **OS Image:** debian-12 (unless specified otherwise)
 - **Public IP:** No (unless web server requested)
 - **Web Server:** No (unless requested)
 
 ## Workflow
 
-When a user requests a deployment, follow this workflow:
+Terraform plan files root folder is `~/.openclaw/workspace/ClawOps/`. When a user requests a deployment, follow this workflow:
 1.  **Check Production:** Look for an existing template for the requested resource in the `production/<cloud>/` folder.
 2.  **Check Staging:** If not found in production, check for an existing template in the `staging/<cloud>/` folder.
 3.  **Generate New Plan:** If neither folder has the template, generate a new plan file in the `staging/<cloud>/` folder, following the `<cloud>-<resource>.tf` naming convention (e.g., `staging/gcp/gcp-vm.tf`).
