@@ -1,0 +1,5 @@
+yfinance
+tabulate
+pyyaml
+scipy
+pytest

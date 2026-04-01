@@ -1,0 +1,10 @@
+.venv
+.venv-test
+__pycache__
+*.pyc
+.vscode/launch.json
+results.csv
+criteria.yaml
+.cache
+.vscode
+options-scanner.code-workspace

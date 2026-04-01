@@ -1,0 +1,20 @@
+tickers:
+  - GME
+  - MSTR
+  - AMZN
+  - GOOGL
+
+criteria:
+  option_type: put
+  delta_min: 0.15
+  delta_max: 0.25
+  dte_min: 30
+  dte_max: 45
+  # roiw_min: optional
+  # roiw_max: optional
+
+settings:
+  provider: yahoo
+  risk_free_rate: 0.05
+  default_iv: 0.30
+  output_csv: results.csv

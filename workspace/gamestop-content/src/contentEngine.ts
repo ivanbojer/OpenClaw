@@ -36,7 +36,7 @@ ${stories.map((s, i) => `[${i + 1}] Source: ${s.source} | Text: "${s.text.replac
 INSTRUCTIONS:
 1. Group stories that cover the same specific event or topic.
 2. If a story is unique/unrelated to others, keep it as its own group.
-3. Write a short tweet for each group (max 200 chars).
+3. Write a short tweet for each group (max 300 chars).
    - Write as if YOU are commenting on it (e.g., "Interesting move here.", "Finally seeing some numbers.", "Looks like X is updated.") and give a cliffhanger or insight.
    - Do NOT use "Sources say" or "[Author] notes". Be direct.
    - Do NOT use @mentions or hashtags in the text (unless critical).
